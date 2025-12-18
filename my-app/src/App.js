@@ -112,8 +112,23 @@ function App() {
 
   return (
     <div className="app">
+      <header className="navbar" role="banner">
+        <div className="brand">Weather Now</div>
+        <nav aria-label="Primary">
+          <ul>
+            <li>
+              <a href="#search">Search</a>
+            </li>
+            <li>
+              <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">
+                Open-Meteo
+              </a>
+            </li>
+          </ul>
+        </nav>
+      </header>
       <h1 className="title">Weather Now</h1>
-      <form className="search" onSubmit={handleSubmit}>
+      <form id="search" className="search" onSubmit={handleSubmit}>
         <label htmlFor="city" className="hidden-label">
           City name
         </label>
