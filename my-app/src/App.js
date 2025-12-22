@@ -37,6 +37,7 @@ function App() {
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
+  const [count, setCount] = useState(0);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -110,6 +111,10 @@ function App() {
 
   const readableCondition = result ? WEATHER_CODES[result.code] ?? 'Unknown conditions' : '';
 
+  const handleIncrement = () => {
+    setCount((current) => current + 1);
+  };
+
   return (
     <div className="app">
       <header className="navbar" role="banner">
@@ -144,6 +149,14 @@ function App() {
           {status === 'loading' ? 'Searching…' : 'Check weather'}
         </button>
       </form>
+
+      <section className="counter" aria-live="polite">
+        <p className="counter-label">Button clicks</p>
+        <div className="counter-display">{count}</div>
+        <button type="button" className="counter-button" onClick={handleIncrement}>
+          Increment
+        </button>
+      </section>
 
       {error && <p className="message error">{error}</p>}
 
