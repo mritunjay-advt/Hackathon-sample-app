@@ -38,6 +38,7 @@ function App() {
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const [count, setCount] = useState(0);
+  const [recentSearches, setRecentSearches] = useState([]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -101,6 +102,13 @@ function App() {
         timestamp: current.time,
       });
 
+      // Add to recent searches (keep last 5 unique cities)
+      setRecentSearches(prev => {
+        const newSearch = trimmedQuery;
+        const filtered = prev.filter(city => city.toLowerCase() !== newSearch.toLowerCase());
+        return [newSearch, ...filtered].slice(0, 5);
+      });
+
       setStatus('success');
     } catch (fetchError) {
       setError(fetchError.message || 'Something went wrong.');
@@ -113,6 +121,17 @@ function App() {
 
   const handleIncrement = () => {
     setCount((current) => current + 1);
+  };
+
+  const handleRecentClick = (cityName) => {
+    setQuery(cityName);
+    // Trigger search automatically
+    setTimeout(() => {
+      const form = document.getElementById('search');
+      if (form) {
+        form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+      }
+    }, 0);
   };
 
   return (
@@ -149,6 +168,25 @@ function App() {
           {status === 'loading' ? 'Searching…' : 'Check weather'}
         </button>
       </form>
+
+      {recentSearches.length > 0 && (
+        <section className="recent-searches" aria-label="Recent searches">
+          <p className="recent-label">Recent Searches</p>
+          <div className="recent-buttons">
+            {recentSearches.map((city, index) => (
+              <button
+                key={index}
+                type="button"
+                className="recent-button"
+                onClick={() => handleRecentClick(city)}
+                disabled={status === 'loading'}
+              >
+                {city}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="counter" aria-live="polite">
         <p className="counter-label">Button clicks</p>
