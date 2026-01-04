@@ -38,6 +38,8 @@ function App() {
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const [count, setCount] = useState(0);
+  const [searchHistory, setSearchHistory] = useState([]);
+  const [forecast, setForecast] = useState(null);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -75,7 +77,7 @@ function App() {
       const [{ latitude, longitude, country, name, timezone }] = geoData.results;
 
       const weatherResponse = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code&timezone=${encodeURIComponent(
+        `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max&timezone=${encodeURIComponent(
           timezone
         )}`
       );
@@ -101,10 +103,30 @@ function App() {
         timestamp: current.time,
       });
 
+      // Process 7-day forecast data
+      if (weatherData.daily) {
+        const forecastDays = weatherData.daily.time.map((date, index) => ({
+          date,
+          weatherCode: weatherData.daily.weather_code[index],
+          maxTemp: weatherData.daily.temperature_2m_max[index],
+          minTemp: weatherData.daily.temperature_2m_min[index],
+          precipitationProb: weatherData.daily.precipitation_probability_max[index],
+          windSpeed: weatherData.daily.wind_speed_10m_max[index],
+        }));
+        setForecast(forecastDays);
+      }
+
+      // Add to search history (keep only last 5 unique entries)
+      setSearchHistory((prevHistory) => {
+        const newHistory = [name, ...prevHistory.filter((city) => city !== name)];
+        return newHistory.slice(0, 5);
+      });
+
       setStatus('success');
     } catch (fetchError) {
       setError(fetchError.message || 'Something went wrong.');
       setResult(null);
+      setForecast(null);
       setStatus('error');
     }
   };
@@ -113,6 +135,10 @@ function App() {
 
   const handleIncrement = () => {
     setCount((current) => current + 1);
+  };
+
+  const handleHistoryClick = (city) => {
+    setQuery(city);
   };
 
   return (
@@ -158,6 +184,24 @@ function App() {
         </button>
       </section>
 
+      {searchHistory.length > 0 && (
+        <section className="search-history">
+          <h3>Recent Searches</h3>
+          <div className="history-buttons">
+            {searchHistory.map((city, index) => (
+              <button
+                key={`${city}-${index}`}
+                type="button"
+                className="history-button"
+                onClick={() => handleHistoryClick(city)}
+              >
+                {city}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       {error && <p className="message error">{error}</p>}
 
       {status === 'success' && result && (
@@ -184,6 +228,47 @@ function App() {
               <dd>{Math.round(result.windSpeed)} km/h</dd>
             </div>
           </dl>
+        </section>
+      )}
+
+      {status === 'success' && forecast && forecast.length > 0 && (
+        <section className="forecast-section">
+          <h2 className="forecast-title">7-Day Forecast</h2>
+          <div className="forecast-grid">
+            {forecast.map((day, index) => {
+              const date = new Date(day.date);
+              const dayName = index === 0 
+                ? 'Today' 
+                : date.toLocaleDateString('en-US', { weekday: 'short' });
+              const monthDay = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              const condition = WEATHER_CODES[day.weatherCode] ?? 'Unknown';
+              
+              return (
+                <div key={day.date} className="forecast-card">
+                  <div className="forecast-day">
+                    <strong>{dayName}</strong>
+                    <span className="forecast-date">{monthDay}</span>
+                  </div>
+                  <div className="forecast-condition">{condition}</div>
+                  <div className="forecast-temps">
+                    <span className="temp-high">{Math.round(day.maxTemp)}°</span>
+                    <span className="temp-divider">/</span>
+                    <span className="temp-low">{Math.round(day.minTemp)}°</span>
+                  </div>
+                  <div className="forecast-details">
+                    <div className="forecast-detail">
+                      <span className="detail-icon">💧</span>
+                      <span>{day.precipitationProb ?? 0}%</span>
+                    </div>
+                    <div className="forecast-detail">
+                      <span className="detail-icon">💨</span>
+                      <span>{Math.round(day.windSpeed)} km/h</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </section>
       )}
 
