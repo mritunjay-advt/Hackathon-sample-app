@@ -40,6 +40,14 @@ function App() {
   const [count, setCount] = useState(0);
   const [searchHistory, setSearchHistory] = useState([]);
   const [forecast, setForecast] = useState(null);
+  
+  // Weather comparison feature state
+  const [compareMode, setCompareMode] = useState(false);
+  const [city1Query, setCity1Query] = useState('');
+  const [city2Query, setCity2Query] = useState('');
+  const [compareStatus, setCompareStatus] = useState('idle');
+  const [compareError, setCompareError] = useState('');
+  const [compareResults, setCompareResults] = useState({ city1: null, city2: null });
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -141,6 +149,90 @@ function App() {
     setQuery(city);
   };
 
+  // Fetch weather for a single city (helper function for comparison)
+  const fetchWeatherForCity = async (cityName) => {
+    const geoResponse = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(
+        cityName
+      )}&count=1&language=en&format=json`
+    );
+
+    if (!geoResponse.ok) {
+      throw new Error('Could not reach the location service.');
+    }
+
+    const geoData = await geoResponse.json();
+
+    if (!geoData.results || geoData.results.length === 0) {
+      throw new Error(`No matching city found for "${cityName}".`);
+    }
+
+    const [{ latitude, longitude, country, name, timezone }] = geoData.results;
+
+    const weatherResponse = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code&timezone=${encodeURIComponent(
+        timezone
+      )}`
+    );
+
+    if (!weatherResponse.ok) {
+      throw new Error('Could not reach the weather service.');
+    }
+
+    const weatherData = await weatherResponse.json();
+    const current = weatherData.current;
+
+    if (!current) {
+      throw new Error('Weather data is missing.');
+    }
+
+    return {
+      location: `${name}, ${country}`,
+      temperature: current.temperature_2m,
+      feelsLike: current.apparent_temperature,
+      humidity: current.relative_humidity_2m,
+      windSpeed: current.wind_speed_10m,
+      code: current.weather_code,
+      timestamp: current.time,
+    };
+  };
+
+  const handleCompare = async (event) => {
+    event.preventDefault();
+    const trimmedCity1 = city1Query.trim();
+    const trimmedCity2 = city2Query.trim();
+
+    if (!trimmedCity1 || !trimmedCity2) {
+      setCompareError('Please enter both cities to compare.');
+      setCompareResults({ city1: null, city2: null });
+      return;
+    }
+
+    setCompareStatus('loading');
+    setCompareError('');
+
+    try {
+      const [result1, result2] = await Promise.all([
+        fetchWeatherForCity(trimmedCity1),
+        fetchWeatherForCity(trimmedCity2),
+      ]);
+
+      setCompareResults({ city1: result1, city2: result2 });
+      setCompareStatus('success');
+    } catch (fetchError) {
+      setCompareError(fetchError.message || 'Something went wrong.');
+      setCompareResults({ city1: null, city2: null });
+      setCompareStatus('error');
+    }
+  };
+
+  const toggleCompareMode = () => {
+    setCompareMode(!compareMode);
+    setCompareError('');
+    setCompareResults({ city1: null, city2: null });
+    setCompareStatus('idle');
+  };
+
   return (
     <div className="app">
       <header className="navbar" role="banner">
@@ -151,6 +243,11 @@ function App() {
               <a href="#search">Search</a>
             </li>
             <li>
+              <a href="#compare" onClick={(e) => { e.preventDefault(); toggleCompareMode(); }}>
+                Compare
+              </a>
+            </li>
+            <li>
               <a href="https://open-meteo.com/" target="_blank" rel="noreferrer">
                 Open-Meteo
               </a>
@@ -159,22 +256,69 @@ function App() {
         </nav>
       </header>
       <h1 className="title">Weather Now</h1>
-      <form id="search" className="search" onSubmit={handleSubmit}>
-        <label htmlFor="city" className="hidden-label">
-          City name
-        </label>
-        <input
-          id="city"
-          type="text"
-          value={query}
-          placeholder="Search for a city"
-          onChange={(event) => setQuery(event.target.value)}
-          disabled={status === 'loading'}
-        />
-        <button type="submit" disabled={status === 'loading'}>
-          {status === 'loading' ? 'Searching…' : 'Check weather'}
-        </button>
-      </form>
+
+      {/* Mode Toggle */}
+      <div className="mode-indicator">
+        {compareMode ? '🔄 Comparison Mode' : '🔍 Single Search Mode'}
+      </div>
+
+      {!compareMode ? (
+        <>
+          <form id="search" className="search" onSubmit={handleSubmit}>
+            <label htmlFor="city" className="hidden-label">
+              City name
+            </label>
+            <input
+              id="city"
+              type="text"
+              value={query}
+              placeholder="Search for a city"
+              onChange={(event) => setQuery(event.target.value)}
+              disabled={status === 'loading'}
+            />
+            <button type="submit" disabled={status === 'loading'}>
+              {status === 'loading' ? 'Searching…' : 'Check weather'}
+            </button>
+          </form>
+        </>
+      ) : (
+        <>
+          <form id="compare" className="compare-form" onSubmit={handleCompare}>
+            <div className="compare-inputs">
+              <div className="compare-input-group">
+                <label htmlFor="city1" className="compare-label">
+                  First City
+                </label>
+                <input
+                  id="city1"
+                  type="text"
+                  value={city1Query}
+                  placeholder="Enter first city"
+                  onChange={(event) => setCity1Query(event.target.value)}
+                  disabled={compareStatus === 'loading'}
+                />
+              </div>
+              <div className="compare-vs">VS</div>
+              <div className="compare-input-group">
+                <label htmlFor="city2" className="compare-label">
+                  Second City
+                </label>
+                <input
+                  id="city2"
+                  type="text"
+                  value={city2Query}
+                  placeholder="Enter second city"
+                  onChange={(event) => setCity2Query(event.target.value)}
+                  disabled={compareStatus === 'loading'}
+                />
+              </div>
+            </div>
+            <button type="submit" disabled={compareStatus === 'loading'}>
+              {compareStatus === 'loading' ? 'Comparing…' : 'Compare Weather'}
+            </button>
+          </form>
+        </>
+      )}
 
       <section className="counter" aria-live="polite">
         <p className="counter-label">Button clicks</p>
@@ -202,9 +346,108 @@ function App() {
         </section>
       )}
 
-      {error && <p className="message error">{error}</p>}
+      {!compareMode && error && <p className="message error">{error}</p>}
+      {compareMode && compareError && <p className="message error">{compareError}</p>}
 
-      {status === 'success' && result && (
+      {/* Comparison Results */}
+      {compareMode && compareStatus === 'success' && compareResults.city1 && compareResults.city2 && (
+        <section className="comparison-section">
+          <h2 className="comparison-title">Weather Comparison</h2>
+          <div className="comparison-grid">
+            {/* City 1 */}
+            <div className="comparison-card">
+              <header>
+                <h3>{compareResults.city1.location}</h3>
+                <p className="timestamp">
+                  {new Date(compareResults.city1.timestamp).toLocaleString()}
+                </p>
+              </header>
+              <div className="primary">
+                <p className="temperature">{Math.round(compareResults.city1.temperature)}°C</p>
+                <p className="condition">
+                  {WEATHER_CODES[compareResults.city1.code] ?? 'Unknown conditions'}
+                </p>
+              </div>
+              <dl className="details">
+                <div>
+                  <dt>Feels like</dt>
+                  <dd>{Math.round(compareResults.city1.feelsLike)}°C</dd>
+                </div>
+                <div>
+                  <dt>Humidity</dt>
+                  <dd>{Math.round(compareResults.city1.humidity)}%</dd>
+                </div>
+                <div>
+                  <dt>Wind</dt>
+                  <dd>{Math.round(compareResults.city1.windSpeed)} km/h</dd>
+                </div>
+              </dl>
+            </div>
+
+            {/* Comparison Stats */}
+            <div className="comparison-stats">
+              <h4>Difference</h4>
+              <div className="stat-item">
+                <span className="stat-label">Temperature</span>
+                <span className="stat-value">
+                  {Math.abs(compareResults.city1.temperature - compareResults.city2.temperature).toFixed(1)}°C
+                </span>
+              </div>
+              <div className="stat-item">
+                <span className="stat-label">Humidity</span>
+                <span className="stat-value">
+                  {Math.abs(compareResults.city1.humidity - compareResults.city2.humidity).toFixed(1)}%
+                </span>
+              </div>
+              <div className="stat-item">
+                <span className="stat-label">Wind Speed</span>
+                <span className="stat-value">
+                  {Math.abs(compareResults.city1.windSpeed - compareResults.city2.windSpeed).toFixed(1)} km/h
+                </span>
+              </div>
+              <div className="stat-highlight">
+                {compareResults.city1.temperature > compareResults.city2.temperature
+                  ? `${compareResults.city1.location.split(',')[0]} is warmer`
+                  : compareResults.city1.temperature < compareResults.city2.temperature
+                  ? `${compareResults.city2.location.split(',')[0]} is warmer`
+                  : 'Same temperature'}
+              </div>
+            </div>
+
+            {/* City 2 */}
+            <div className="comparison-card">
+              <header>
+                <h3>{compareResults.city2.location}</h3>
+                <p className="timestamp">
+                  {new Date(compareResults.city2.timestamp).toLocaleString()}
+                </p>
+              </header>
+              <div className="primary">
+                <p className="temperature">{Math.round(compareResults.city2.temperature)}°C</p>
+                <p className="condition">
+                  {WEATHER_CODES[compareResults.city2.code] ?? 'Unknown conditions'}
+                </p>
+              </div>
+              <dl className="details">
+                <div>
+                  <dt>Feels like</dt>
+                  <dd>{Math.round(compareResults.city2.feelsLike)}°C</dd>
+                </div>
+                <div>
+                  <dt>Humidity</dt>
+                  <dd>{Math.round(compareResults.city2.humidity)}%</dd>
+                </div>
+                <div>
+                  <dt>Wind</dt>
+                  <dd>{Math.round(compareResults.city2.windSpeed)} km/h</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {!compareMode && status === 'success' && result && (
         <section className="card" aria-live="polite">
           <header>
             <h2>{result.location}</h2>
@@ -231,7 +474,7 @@ function App() {
         </section>
       )}
 
-      {status === 'success' && forecast && forecast.length > 0 && (
+      {!compareMode && status === 'success' && forecast && forecast.length > 0 && (
         <section className="forecast-section">
           <h2 className="forecast-title">7-Day Forecast</h2>
           <div className="forecast-grid">
@@ -272,8 +515,12 @@ function App() {
         </section>
       )}
 
-      {status === 'idle' && !result && !error && (
+      {!compareMode && status === 'idle' && !result && !error && (
         <p className="message">Look up any city to see its current conditions.</p>
+      )}
+
+      {compareMode && compareStatus === 'idle' && !compareResults.city1 && !compareError && (
+        <p className="message">Enter two cities to compare their weather conditions.</p>
       )}
     </div>
   );
